@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CAAA Legal Intelligence | AI-Powered Research Platform</title>
     
+    <!-- Access Control -->
+    <script>
+        (function() {
+            const ACCESS_CODE = "CAAA2025";
+            const stored = sessionStorage.getItem('caaa_access_granted');
+            
+            if (stored !== ACCESS_CODE) {
+                const entered = prompt("Enter access code to continue:");
+                if (entered === ACCESS_CODE) {
+                    sessionStorage.setItem('caaa_access_granted', ACCESS_CODE);
+                } else {
+                    document.write('<html><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f3f4f6;"><div style="text-align:center;"><h1 style="color:#ef4444;font-size:48px;margin:0;">Access Denied</h1><p style="color:#6b7280;font-size:18px;margin-top:10px;">Invalid access code</p></div></body></html>');
+                    document.close();
+                    throw new Error('Access denied');
+                }
+            }
+        })();
+    </script>
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -63,11 +82,14 @@
                         </span>
                     </div>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <div class="text-sm text-gray-600">
-                        <i class="fas fa-robot text-primary-500"></i>
-                        <span class="font-semibold">AI-Powered</span>
-                    </div>
+                <div class="flex items-center">
+                    <a href="http://134.199.196.31:8000/admin/refresh-cookies" 
+                       target="_blank"
+                       class="text-gray-500 hover:text-primary-600 transition-colors flex items-center text-sm"
+                       title="Refresh CAAA Login (Admin)">
+                        <i class="fas fa-key mr-1"></i>
+                        Refresh Login
+                    </a>
                 </div>
             </div>
         </div>
@@ -87,11 +109,45 @@
             </div>
             
             <!-- Main Search Interface -->
-            <div class="max-w-6xl mx-auto" x-data="searchApp()">
+            <div class="max-w-6xl mx-auto" x-data="searchApp()" x-init="init()">
                 <div class="glass rounded-2xl p-8 search-box-shadow">
                     
-                    <!-- AI Intent Box (Always Visible) -->
+                    <!-- Query Type Selector -->
                     <div class="mb-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                            <i class="fas fa-list-ul text-primary-500 mr-2"></i>
+                            Query Type
+                        </label>
+                        <select 
+                            x-model="queryType"
+                            @change="queryTypeChanged"
+                            class="w-full md:w-64 px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all bg-white font-semibold text-gray-700"
+                            :disabled="searching">
+                            <option value="general">General Question</option>
+                            <option value="doctor_evaluation">Doctor Good/Bad</option>
+                        </select>
+                    </div>
+
+                    <!-- Doctor Name Input (Only shown for Doctor Good/Bad) -->
+                    <div x-show="queryType === 'doctor_evaluation'" class="mb-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2 flex items-center">
+                            <i class="fas fa-user-md text-primary-500 mr-2"></i>
+                            Doctor Name
+                        </label>
+                        <input 
+                            type="text"
+                            x-model="doctorName"
+                            class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-primary-500 focus:ring-4 focus:ring-primary-100 transition-all"
+                            placeholder="e.g., Dr. John Smith or Smith"
+                            :disabled="searching">
+                        <p class="mt-2 text-xs text-gray-500">
+                            <i class="fas fa-info-circle text-blue-500 mr-1"></i>
+                            Enter the doctor's name. The system will search for all messages mentioning this doctor and provide an evaluation.
+                        </p>
+                    </div>
+                    
+                    <!-- AI Intent Box (Only shown for General Question) -->
+                    <div x-show="queryType === 'general'" class="mb-6">
                         <label class="block text-sm font-semibold text-gray-700 mb-2 flex items-center">
                             <i class="fas fa-brain text-primary-500 mr-2"></i>
                             What are you trying to find? (Optional AI Assistant)
@@ -112,9 +168,9 @@
                             <button 
                                 type="button"
                                 @click="askAI"
-                                x-show="aiIntent.trim().length > 0"
-                                class="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all"
-                                :disabled="searching || aiAnalyzing">
+                                x-show="queryType === 'general'"
+                                class="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                :disabled="searching || aiAnalyzing || !aiIntent || aiIntent.trim().length === 0">
                                 <span x-show="!aiAnalyzing">
                                     <i class="fas fa-magic mr-2"></i>
                                     Ask AI Assistant
@@ -145,7 +201,8 @@
                                             <i class="fas fa-robot text-white text-sm"></i>
                                         </div>
                                         <div class="flex-1 bg-white p-4 rounded-lg shadow-sm">
-                                            <p class="text-gray-800 whitespace-pre-line" x-text="msg.content"></p>
+                                            <!-- Only show content if there's no follow-up question -->
+                                            <p x-show="!msg.question" class="text-gray-800 whitespace-pre-line" x-text="msg.content"></p>
                                             
                                             <!-- AI Suggested Search Parameters -->
                                             <div x-show="msg.suggestions" class="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
@@ -174,18 +231,24 @@
                                             <!-- AI Follow-up Question -->
                                             <div x-show="msg.question" class="mt-4">
                                                 <p class="text-sm font-semibold text-gray-900 mb-2" x-text="msg.question"></p>
-                                                <input 
-                                                    type="text"
-                                                    x-model="followUpAnswer"
-                                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                                    placeholder="Your answer..."
-                                                    @keyup.enter="answerFollowUp">
-                                                <button 
-                                                    @click="answerFollowUp"
-                                                    class="mt-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm">
-                                                    <i class="fas fa-paper-plane mr-2"></i>
-                                                    Send Answer
-                                                </button>
+                                                
+                                                <!-- Only show input for the last message -->
+                                                <template x-if="index === aiConversation.length - 1">
+                                                    <div>
+                                                        <input 
+                                                            type="text"
+                                                            x-model="followUpAnswer"
+                                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                                            placeholder="Your answer..."
+                                                            @keyup.enter="answerFollowUp">
+                                                        <button 
+                                                            @click="answerFollowUp"
+                                                            class="mt-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm">
+                                                            <i class="fas fa-paper-plane mr-2"></i>
+                                                            Send Answer
+                                                        </button>
+                                                    </div>
+                                                </template>
                                             </div>
                                         </div>
                                     </div>
@@ -204,10 +267,36 @@
                         </div>
                     </div>
 
-                    <!-- Manual Search Fields -->
+                    <!-- Manual Search Fields (Only shown for General Question) -->
                     <form @submit.prevent="submitSearch">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div x-show="queryType === 'general'" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                             
+                            <!-- First Name (Witness/Expert) -->
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    First Name
+                                </label>
+                                <input 
+                                    type="text"
+                                    x-model="searchFields.first_name"
+                                    class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all"
+                                    placeholder="Witness/Expert first name"
+                                    :disabled="searching">
+                            </div>
+
+                            <!-- Last Name (Witness/Expert) -->
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Last Name
+                                </label>
+                                <input 
+                                    type="text"
+                                    x-model="searchFields.last_name"
+                                    class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all"
+                                    placeholder="Witness/Expert last name"
+                                    :disabled="searching">
+                            </div>
+
                             <!-- Simple Keyword -->
                             <div>
                                 <label class="block text-sm font-semibold text-gray-700 mb-2">
@@ -355,34 +444,35 @@
                                     <option value="0">Without Attachments</option>
                                 </select>
                             </div>
-
-                            <!-- Last Name -->
-                            <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">
-                                    Last Name
-                                </label>
-                                <input 
-                                    type="text"
-                                    x-model="searchFields.last_name"
-                                    class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all"
-                                    placeholder="Author last name"
-                                    :disabled="searching">
-                            </div>
                         </div>
                         
-                        <!-- Options & Submit -->
+                        <!-- Options & Submit (Always visible) -->
                         <div class="flex items-center justify-between pt-6 border-t">
-                            <div class="text-sm text-gray-600">
-                                <span>Max: <span class="font-semibold text-primary-600">50</span> messages</span>
+                            <div class="flex items-center space-x-3">
+                                <label class="text-sm font-semibold text-gray-700">
+                                    Max Messages:
+                                </label>
+                                <select 
+                                    x-model.number="maxMessages"
+                                    class="px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all bg-white font-semibold text-primary-600"
+                                    :disabled="searching">
+                                    <option value="10">10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                    <option value="75">75</option>
+                                    <option value="100">100</option>
+                                    <option value="150">150</option>
+                                    <option value="200">200</option>
+                                </select>
                             </div>
                             
                             <button 
                                 type="submit"
                                 class="px-8 py-3 bg-gradient-to-r from-primary-600 to-purple-600 text-white font-semibold rounded-xl hover:from-primary-700 hover:to-purple-700 transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                                :disabled="searching || !hasAnySearchCriteria()">
+                                :disabled="searching || (queryType === 'general' && !hasAnySearchCriteria()) || (queryType === 'doctor_evaluation' && !doctorName.trim())">
                                 <span x-show="!searching" class="flex items-center">
-                                    <i class="fas fa-search mr-2"></i>
-                                    Search & Analyze
+                                    <i class="fas mr-2" :class="queryType === 'doctor_evaluation' ? 'fa-user-md' : 'fa-search'"></i>
+                                    <span x-text="queryType === 'doctor_evaluation' ? 'Evaluate Doctor' : 'Search & Analyze'"></span>
                                 </span>
                                 <span x-show="searching" class="flex items-center">
                                     <i class="fas fa-spinner fa-spin mr-2"></i>
@@ -408,7 +498,7 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-sm text-gray-600 font-medium">Total Searches</p>
-                        <p class="text-3xl font-bold text-gray-900 mt-1">{{ stats.total_searches or 0 }}</p>
+                        <p class="text-3xl font-bold text-gray-900 mt-1" x-text="stats.total_searches"></p>
                     </div>
                     <div class="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
                         <i class="fas fa-search text-primary-600 text-xl"></i>
@@ -420,7 +510,7 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-sm text-gray-600 font-medium">Messages Analyzed</p>
-                        <p class="text-3xl font-bold text-gray-900 mt-1">{{ stats.total_messages or 0 }}</p>
+                        <p class="text-3xl font-bold text-gray-900 mt-1" x-text="stats.total_messages"></p>
                     </div>
                     <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                         <i class="fas fa-file-alt text-purple-600 text-xl"></i>
@@ -432,7 +522,7 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-sm text-gray-600 font-medium">Relevant Results</p>
-                        <p class="text-3xl font-bold text-gray-900 mt-1">{{ stats.total_relevant or 0 }}</p>
+                        <p class="text-3xl font-bold text-gray-900 mt-1" x-text="stats.total_relevant"></p>
                     </div>
                     <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                         <i class="fas fa-check-circle text-green-600 text-xl"></i>
@@ -444,7 +534,7 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-sm text-gray-600 font-medium">Active Searches</p>
-                        <p class="text-3xl font-bold text-gray-900 mt-1">{{ stats.running_searches or 0 }}</p>
+                        <p class="text-3xl font-bold text-gray-900 mt-1" x-text="stats.running_searches"></p>
                     </div>
                     <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
                         <i class="fas fa-spinner fa-pulse text-yellow-600 text-xl"></i>
@@ -453,12 +543,66 @@
             </div>
         </div>
 
-        <!-- Recent Searches removed for static deployment -->
+        <!-- Search History Section -->
+        <div class="mt-16 glass p-8 rounded-2xl">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+                <i class="fas fa-history text-primary-600 mr-3"></i>
+                Recent Search History
+            </h2>
+            
+            <div x-show="searchHistory.length === 0" class="text-center py-8 text-gray-500">
+                <i class="fas fa-search text-4xl mb-4 opacity-50"></i>
+                <p>No searches yet. Start your first search above!</p>
+            </div>
+            
+            <div x-show="searchHistory.length > 0" class="space-y-4">
+                <template x-for="search in searchHistory" :key="search.id">
+                    <div class="bg-white p-6 rounded-lg border border-gray-200 hover:border-primary-300 transition-colors">
+                        <div class="flex justify-between items-start mb-3">
+                            <div class="flex-1">
+                                <h3 class="font-semibold text-gray-900 mb-1" x-text="search.ai_intent || search.query"></h3>
+                                <p class="text-sm text-gray-500" x-text="new Date(search.created_at).toLocaleString()"></p>
+                            </div>
+                            <span class="px-3 py-1 rounded-full text-xs font-medium"
+                                  :class="{
+                                      'bg-green-100 text-green-800': search.status === 'completed',
+                                      'bg-blue-100 text-blue-800': search.status === 'analyzing',
+                                      'bg-yellow-100 text-yellow-800': search.status === 'running'
+                                  }"
+                                  x-text="search.status"></span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between mt-4">
+                            <div class="flex gap-4 text-sm text-gray-600">
+                                <span class="flex items-center">
+                                    <i class="fas fa-file-alt mr-1"></i>
+                                    <span x-text="search.result_count"></span> results
+                                </span>
+                                <span class="flex items-center text-green-600" x-show="search.relevant_count > 0">
+                                    <i class="fas fa-check-circle mr-1"></i>
+                                    <span x-text="search.relevant_count"></span> relevant
+                                </span>
+                            </div>
+                            <a :href="`/results.html?id=${search.id}`" 
+                               class="text-primary-600 hover:text-primary-700 font-medium text-sm flex items-center">
+                                View Results
+                                <i class="fas fa-arrow-right ml-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
     </div>
 
     <script>
         function searchApp() {
             return {
+                // Query Type
+                queryType: 'general',
+                doctorName: '',
+                
                 // AI Intent
                 aiIntent: '',
                 aiAnalyzing: false,
@@ -478,12 +622,50 @@
                     posted_by: '',
                     search_in: 'subject_and_body',
                     attachments: '',
+                    first_name: '',
                     last_name: ''
                 },
                 
                 searching: false,
                 statusMessage: '',
                 statusType: '',
+                maxMessages: 50,  // Default max messages to search
+                stats: {
+                    total_searches: 0,
+                    total_messages: 0,
+                    total_relevant: 0,
+                    running_searches: 0
+                },
+                searchHistory: [],
+                
+                async init() {
+                    await this.fetchStats();
+                    await this.fetchHistory();
+                    // Refresh stats every 10 seconds
+                    setInterval(() => this.fetchStats(), 10000);
+                },
+                
+                async fetchStats() {
+                    try {
+                        const response = await fetch('/api/stats');
+                        const data = await response.json();
+                        this.stats = data;
+                    } catch (err) {
+                        console.error('Error fetching stats:', err);
+                    }
+                },
+                
+                async fetchHistory() {
+                    try {
+                        const response = await fetch('http://134.199.196.31:8000/api/search-history');
+                        const data = await response.json();
+                        if (data.success) {
+                            this.searchHistory = data.history;
+                        }
+                    } catch (err) {
+                        console.error('Error fetching history:', err);
+                    }
+                },
                 
                 hasAnySearchCriteria() {
                     return Object.values(this.searchFields).some(val => 
@@ -569,6 +751,7 @@
                         posted_by: 'Posted By',
                         search_in: 'Search In',
                         attachments: 'Attachments',
+                        first_name: 'First Name',
                         last_name: 'Last Name'
                     };
                     return labels[key] || key;
@@ -602,6 +785,7 @@
                 async answerFollowUp() {
                     if (!this.followUpAnswer.trim()) return;
                     
+                    // Add user's answer to conversation
                     this.aiConversation.push({
                         role: 'user',
                         content: this.followUpAnswer
@@ -614,6 +798,10 @@
                     this.aiAnalyzing = true;
                     
                     try {
+                        // Create AbortController with 60 second timeout
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 60000);
+                        
                         const response = await fetch('/api/ai/follow-up', {
                             method: 'POST',
                             headers: {
@@ -623,8 +811,15 @@
                                 answer: answer,
                                 conversation: this.aiConversation,
                                 current_fields: this.searchFields
-                            })
+                            }),
+                            signal: controller.signal
                         });
+                        
+                        clearTimeout(timeoutId);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Server error: ${response.status}`);
+                        }
                         
                         const data = await response.json();
                         
@@ -635,34 +830,76 @@
                                 suggestions: data.suggestions,
                                 question: data.follow_up_question
                             });
+                        } else {
+                            throw new Error(data.error || 'Unknown error');
                         }
                     } catch (error) {
-                        this.statusMessage = `AI Error: ${error.message}`;
+                        // Remove the user's answer from conversation on error
+                        this.aiConversation.pop();
+                        
+                        let errorMsg = error.message;
+                        if (error.name === 'AbortError') {
+                            errorMsg = 'AI is taking too long. Please try again.';
+                        }
+                        
+                        this.statusMessage = `AI Error: ${errorMsg}`;
                         this.statusType = 'error';
                     } finally {
                         this.aiAnalyzing = false;
                     }
                 },
                 
+                queryTypeChanged() {
+                    // Reset doctor name when switching away from doctor evaluation
+                    if (this.queryType !== 'doctor_evaluation') {
+                        this.doctorName = '';
+                    }
+                    // Clear AI conversation when switching query types
+                    this.aiConversation = [];
+                    this.aiIntent = '';
+                },
+                
                 async submitSearch() {
-                    if (!this.hasAnySearchCriteria()) return;
+                    // For doctor evaluation, require doctor name
+                    if (this.queryType === 'doctor_evaluation' && !this.doctorName.trim()) {
+                        this.statusMessage = 'Please enter a doctor name for evaluation.';
+                        this.statusType = 'error';
+                        return;
+                    }
+                    
+                    // For general queries, require search criteria
+                    if (this.queryType === 'general' && !this.hasAnySearchCriteria()) {
+                        return;
+                    }
                     
                     this.searching = true;
                     this.statusMessage = '';
                     
                     try {
+                        // Build request body based on query type
+                        const requestBody = {
+                            query_type: this.queryType,
+                            max_messages: this.maxMessages,
+                            max_pages: 10
+                        };
+                        
+                        if (this.queryType === 'doctor_evaluation') {
+                            // For doctor evaluation, use doctor name as AI intent
+                            requestBody.ai_intent = `Evaluate doctor: ${this.doctorName.trim()}`;
+                            requestBody.use_ai_enhancement = true;
+                        } else {
+                            // For general queries, use existing logic
+                            requestBody.search_fields = this.searchFields;
+                            requestBody.ai_intent = this.aiIntent;
+                            requestBody.use_ai_enhancement = false;
+                        }
+                        
                         const response = await fetch('/api/search', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                             },
-                            body: JSON.stringify({
-                                search_fields: this.searchFields,
-                                ai_intent: this.aiIntent,
-                                use_ai_enhancement: false,  // Already manually configured
-                                max_messages: 50,
-                                max_pages: 10
-                            })
+                            body: JSON.stringify(requestBody)
                         });
                         
                         const data = await response.json();
